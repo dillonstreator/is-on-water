@@ -6,6 +6,10 @@ export type Config = {
     healthCheckEndpoint: string;
     env: Env;
     logLevel: pino.Level;
+    redisUrl: string;
+    rateLimitWindowMs: number;
+    rateLimitMax: number;
+    trustProxy: boolean;
 }
 
 export const initConfig = async (): Promise<Config> => {
@@ -15,6 +19,10 @@ export const initConfig = async (): Promise<Config> => {
         healthCheckEndpoint: process.env.HEALTH_CHECK_ENDPOINT || "/health",
         env: getEnv(),
         logLevel: process.env.LOG_LEVEL?.toLowerCase() as pino.Level|undefined || "info",
+        redisUrl: process.env.REDIS_URL || "redis://localhost:6379",
+        rateLimitWindowMs: parseInt(process.env.RATE_LIMIT_WNIDOW_MS || "60000"),
+        rateLimitMax: parseInt(process.env.RATE_LIMIT_MAX || "100"),
+        trustProxy: (process.env.TRUST_PROXY?.toLowerCase() || "true") === "true",
     }
 }
 

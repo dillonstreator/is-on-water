@@ -6,6 +6,9 @@ import pino from 'pino';
 import helmet from 'helmet';
 import compression from 'compression';
 import { getClientIp } from 'request-ip';
+import { createClient } from 'redis';
+import { rateLimit } from 'express-rate-limit'
+import { RedisStore } from 'rate-limit-redis'
 import { Config } from './config';
 import { Coordinate, isOnWater, isCoordinate } from './is-on-water';
 import { tracer } from './telemetry';
@@ -16,8 +19,23 @@ export type App = {
 }
 
 export const initApp = async (config: Config, logger: pino.Logger): Promise<App> => {
+    const redisClient = await createClient({
+        url: config.redisUrl,
+    }).connect();
+
+    const limiter = rateLimit({
+        windowMs: config.rateLimitWindowMs,
+        max: config.rateLimitMax,
+        store: new RedisStore({
+            sendCommand: (...args: string[]) => redisClient.sendCommand(args),
+        })
+    });
+
     const app = express();
-    app.set("trust proxy", true);
+    if (config.trustProxy) {
+        app.set("trust proxy", true);
+    }
+
     app.use((req, res, next) => {
         const start = new Date().getTime();
 
@@ -46,6 +64,8 @@ export const initApp = async (config: Config, logger: pino.Logger): Promise<App>
     app.get(config.healthCheckEndpoint, (req, res) => {
         res.sendStatus(200);
     });
+
+    app.use(limiter);
 
     app.get("/", (req, res) => {
         if (!isCoordinate(req.query))
@@ -87,7 +107,7 @@ export const initApp = async (config: Config, logger: pino.Logger): Promise<App>
     return {
         requestListener: app,
         shutdown: async () => {
-            // add any cleanup code here including database/redis disconnecting and background job shutdown
+            await redisClient.disconnect();
         },
     }
 }
