@@ -1,18 +1,30 @@
 // @ts-nocheck
 import GeoJsonLookup from "geojson-geometries-lookup";
-import getMap from "@geo-maps/earth-lands-1m";
+import getMapSeas from "@geo-maps/earth-seas-1m";
+import getMapLakes from "@geo-maps/earth-lakes-1m";
+import getMapRivers from "@geo-maps/earth-rivers-1m";
 
-const landLookup = new GeoJsonLookup(getMap());
+const seasLookup = new GeoJsonLookup(getMapSeas());
+const lakesLookup = new GeoJsonLookup(getMapLakes());
+const riversLookup = new GeoJsonLookup(getMapRivers());
+
+const hasContainer = ({lookups, lat, lon}) => lookups.some(l => l.hasContainers({
+    type: "Point",
+    coordinates: [lon, lat],
+}));
 
 export const isOnWater = ({ lat, lon }: Coordinate) => {
     lat = parseFloat(lat)
     lon = parseFloat(lon)
 
+    const water = hasContainer({
+        lookups: [seasLookup, lakesLookup, riversLookup],
+        lat,
+        lon,
+    })
+
     return {
-        water: !landLookup.hasContainers({
-            type: "Point",
-            coordinates: [lon, lat],
-        }),
+        water,
         lat,
         lon,
     }

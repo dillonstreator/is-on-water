@@ -996,10 +996,20 @@
   dependencies:
     "@jridgewell/trace-mapping" "0.3.9"
 
-"@geo-maps/earth-lands-1m@^0.6.0":
+"@geo-maps/earth-lakes-1m@^0.6.0":
   version "0.6.0"
-  resolved "https://registry.yarnpkg.com/@geo-maps/earth-lands-1m/-/earth-lands-1m-0.6.0.tgz#47781463450d47f71f12980ce81bdb31a80063f6"
-  integrity sha512-e8b7PcXerqNu17aUqwakzLaXt7Lj4nREuZvT1VklopLgTcFHSAjiK8XB+R23s+abaP5A4ngjxbUs1hTCVmcXqw==
+  resolved "https://registry.yarnpkg.com/@geo-maps/earth-lakes-1m/-/earth-lakes-1m-0.6.0.tgz#9d32555d48969e42dc36a8e6f2ade166cd29369e"
+  integrity sha512-NcrEEgHEJOMhYCPin2kkwtjqpctGzffhcTEn5gBcziyyC/wx7GfEzRYHbmqAj0K2pdBluvrse8HbGl6B/U2IcQ==
+
+"@geo-maps/earth-rivers-1m@^0.6.0":
+  version "0.6.0"
+  resolved "https://registry.yarnpkg.com/@geo-maps/earth-rivers-1m/-/earth-rivers-1m-0.6.0.tgz#40baa6c916be172e60250e6ac3fce56019b43e89"
+  integrity sha512-Gz/flbmmiIBjM/U4Y2R9HvIOtwcDsAuJ/zYzWRdMsF5uTJKP9NH9p5WBZNkXCE7DsUEgULrMT+rUnN6Xx3y/hg==
+
+"@geo-maps/earth-seas-1m@^0.6.0":
+  version "0.6.0"
+  resolved "https://registry.yarnpkg.com/@geo-maps/earth-seas-1m/-/earth-seas-1m-0.6.0.tgz#52af9d7b5828248ef6e09946f6ffcbd2227c5a5f"
+  integrity sha512-x5UYFHAykG151IBRxBMut0eirB3zJMJSuBnE45+QYn3HMHY2Ru0iqBOc05WFktSsQeatjvdENzcjD6lJnJ2RTA==
 
 "@grpc/grpc-js@^1.7.1":
   version "1.9.11"
