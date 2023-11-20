@@ -20,4 +20,4 @@ yarn dev
 yarn build && yarn start
 ```
 
-It is expected that [Redis](https://redis.io/) is running. You can specify the redis connection url with the environment variable `REDIS_URL`.
+It is expected that a [Redis](https://redis.io/) instance is running. You can specify the redis connection url with the environment variable `REDIS_URL`. You can also use the [`docker-compose.yaml`](./docker-compose.yaml) to spin up a Redis instance with `docker-compose up`.
