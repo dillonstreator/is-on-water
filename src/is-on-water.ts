@@ -4,7 +4,7 @@ import getMap from "@geo-maps/earth-lands-1m";
 
 const landLookup = new GeoJsonLookup(getMap());
 
-export const isOnWater = ({ lat, lon }: Point) => {
+export const isOnWater = ({ lat, lon }: Coordinate) => {
     lat = parseFloat(lat)
     lon = parseFloat(lon)
 
@@ -20,12 +20,12 @@ export const isOnWater = ({ lat, lon }: Point) => {
 
 const isNumber = (n: any) => !isNaN(parseFloat(n)) && isFinite(n);
 
-export type Point = {
+export type Coordinate = {
     lat: string;
     lon: string;
 }
 
-export const isPoint = (obj: any): boolean => {
+export const isCoordinate = (obj: any): boolean => {
     if (!(typeof obj === "object")) return false;
 
     const { lat, lon } = obj;

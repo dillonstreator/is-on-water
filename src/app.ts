@@ -7,7 +7,7 @@ import helmet from 'helmet';
 import compression from 'compression';
 import { getClientIp } from 'request-ip';
 import { Config } from './config';
-import { Point, isOnWater, isPoint } from './is-on-water';
+import { Coordinate, isOnWater, isCoordinate } from './is-on-water';
 import { tracer } from './telemetry';
 
 export type App = {
@@ -48,13 +48,13 @@ export const initApp = async (config: Config, logger: pino.Logger): Promise<App>
     });
 
     app.get("/", (req, res) => {
-        if (!isPoint(req.query))
+        if (!isCoordinate(req.query))
             return res
                 .status(400)
                 .send(
                     "'lat' and 'lon' query parameters required representing a valid lat/lon (-180 < lat/lon < 180)"
                 );
-        const { lat, lon } = req.query as Point;
+        const { lat, lon } = req.query as Coordinate;
 
         const span = tracer.startSpan("isOnWater");
         span.setAttribute("count", 1);
@@ -65,20 +65,20 @@ export const initApp = async (config: Config, logger: pino.Logger): Promise<App>
     });
 
     app.post("/", (req, res) => {
-        const points = req.body;
-        if (!Array.isArray(points))
-            return res.status(400).send("body must be an array of points");
+        const coordinates = req.body;
+        if (!Array.isArray(coordinates))
+            return res.status(400).send("body must be an array of coordinates");
 
-        if (!points.every(isPoint))
+        if (!coordinates.every(isCoordinate))
             return res
                 .status(400)
                 .send(
-                    "'points' is a required field that must be an array of objects containing keys 'lat' and 'lon' representing a valid lat/lon (-180 < lat/lon < 180)"
+                    "body must be an array of objects containing keys 'lat' and 'lon' representing a valid lat/lon (-180 < lat/lon < 180)"
                 );
 
         const span = tracer.startSpan("isOnWater");
-        span.setAttribute("count", points.length);
-        const result = points.map(isOnWater);
+        span.setAttribute("count", coordinates.length);
+        const result = coordinates.map(isOnWater);
         span.end();
 
         res.json(result);
