@@ -1,6 +1,6 @@
 # `is-on-water`
 
-💧 Check whether a geographic coordinate is on water (seas, lakes, and rivers) with 1m precision. Exposed via an HTTP API allowing for single coordinate (`GET /?lat=${lat}&lon=${lon}`) and batches (`POST /` with array of coordinate objects) lookups.
+💧 Check whether a geographic coordinate is on water (seas, lakes, and rivers) with 1m precision. Exposed via an HTTP API allowing for single coordinate (`GET /api/is-on-water?lat=${lat}&lon=${lon}`) and batches (`POST /api/is-on-water` with array of coordinate objects) lookups.
 
 [![Deploy on Railway](https://railway.app/button.svg)](https://railway.app/template/MfUYQX?referralCode=ToZEjF)
 

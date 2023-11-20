@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { RequestListener } from 'node:http';
+import fs from 'node:fs';
+import path from 'node:path';
 import express, { json, urlencoded } from 'express';
 import pino from 'pino';
 import helmet from 'helmet';
@@ -12,6 +14,8 @@ import { RedisStore } from 'rate-limit-redis'
 import { Config } from './config';
 import { Coordinate, isOnWater, isCoordinate } from './is-on-water';
 import { tracer } from './telemetry';
+
+const indexHTMLPath = path.join(__dirname, "index.html");
 
 export type App = {
     requestListener: RequestListener,
@@ -56,7 +60,14 @@ export const initApp = async (config: Config, logger: pino.Logger): Promise<App>
 
         asl.run({ logger: l, requestId }, () => next());
     });
-    app.use(helmet());
+    app.use(helmet({
+        contentSecurityPolicy: {
+            directives: {
+                "script-src": "'self' 'unsafe-inline' https://unpkg.com",
+                "img-src": "'self' data: https://tile.openstreetmap.org https://railway.app"
+            }
+        }
+    }));
     app.use(compression());
     app.use(urlencoded());
     app.use(json());
@@ -68,6 +79,10 @@ export const initApp = async (config: Config, logger: pino.Logger): Promise<App>
     app.use(limiter);
 
     app.get("/", (req, res) => {
+        res.sendFile(indexHTMLPath);
+    });
+
+    app.get("/api/is-on-water", async (req, res) => {
         if (!isCoordinate(req.query))
             return res
                 .status(400)
@@ -84,7 +99,7 @@ export const initApp = async (config: Config, logger: pino.Logger): Promise<App>
         res.json(result);
     });
 
-    app.post("/", (req, res) => {
+    app.post("/api/is-on-water", (req, res) => {
         const coordinates = req.body;
         if (!Array.isArray(coordinates))
             return res.status(400).send("body must be an array of coordinates");

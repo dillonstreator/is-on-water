@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Is On Water</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+    crossorigin=""/>
+     <!-- Make sure you put this AFTER Leaflet's CSS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+    crossorigin=""></script>
+    <style>
+        html, body {
+            margin: 0;
+            height: 100%;
+        }
+        #map { height: 100%; }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    <script>
+        const map = L.map('map').setView([0, 0], 5);
+        L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 11,
+            attribution: '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+            noWrap: true,
+        }).addTo(map);
+        const thing = L.control({ position: 'topright' })
+        thing.onAdd = function() {
+            const div = L.DomUtil.create('div', 'info legend2');
+            div.innerHTML = '<a href="https://railway.app/template/MfUYQX?referralCode=ToZEjF" target="_blank" rel="noopener noreferrer"><img src="https://railway.app/button.svg" /></a>';
+            return div;
+        }
+        thing.addTo(map);
+        const popup = L.popup();
+        let ab = new AbortController();
+        const createPopupContent = ({ water, lat, lon }) => {
+            return `<p style="margin: 0;">lat: ${lat}</p><p style="margin: 0;">lon: ${lon}</p><p>water: ${water === undefined ? "Loading..." : water}</p>`;
+        }
+        function onMapClick(e) {
+            ab?.abort();
+            ab = new AbortController();
+            const { lat, lng: lon } = e.latlng;
+            fetch(`/api/is-on-water?lat=${lat}&lon=${lon}`, { signal: ab.signal })
+                .then(res => {
+                    if (res.status !== 200) {
+                        throw new Error("something went wrong")
+                    }
+                    return res.json();
+                })
+                .then((res) => { popup.setContent(createPopupContent(res)) })
+                .catch(e => {
+                    if (e.message === "The user aborted a request.") return;
+                    popup.setContent(e.message)
+                });
+
+            popup
+                .setLatLng(e.latlng)
+                .setContent(createPopupContent({ lat, lon }))
+                .openOn(map);
+        }
+
+        onMapClick({ latlng: { lat: 0, lng: 0 } });
+        map.on('click', onMapClick);
+    </script>
+</body>
+</html>
