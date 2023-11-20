@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { RequestListener } from 'node:http';
-import fs from 'node:fs';
 import path from 'node:path';
 import express, { json, urlencoded } from 'express';
 import pino from 'pino';
@@ -15,7 +14,7 @@ import { Config } from './config';
 import { Coordinate, isOnWater, isCoordinate } from './is-on-water';
 import { tracer } from './telemetry';
 
-const indexHTMLPath = path.join(__dirname, "index.html");
+const indexHTMLPath = path.join(__dirname, "..", "public", "index.html");
 
 export type App = {
     requestListener: RequestListener,
