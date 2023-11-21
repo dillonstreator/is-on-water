@@ -14,7 +14,7 @@ import { Config } from './config';
 import { Coordinate, isOnWater, isCoordinate } from './is-on-water';
 import { tracer } from './telemetry';
 
-const indexHTMLPath = path.join(__dirname, "..", "public", "index.html");
+const indexHTMLPath = path.join(__dirname, "public", "index.html");
 
 export type App = {
     requestListener: RequestListener,
