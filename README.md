@@ -4,8 +4,7 @@ Check whether a geographic coordinate is on water (seas, lakes, and rivers). Exp
 
 Built on [Fastify](https://fastify.dev/) with optional OpenTelemetry, Swagger at `/documentation`, and rate limiting (in-memory by default; Redis when `REDIS_URL` is set).
 
-[![Deploy on Railway](https://railway.app/button.svg)](https://railway.app/template/MfUYQX?referralCode=ToZEjF)
-
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/MfUYQX?referralCode=ToZEjF&utm_medium=integration&utm_source=template&utm_campaign=generic)
 ## Installation
 
 ```sh
