@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import Fastify, { FastifyError } from 'fastify';
 import pino from 'pino';
@@ -19,6 +20,10 @@ import fastifySwaggerUI from '@fastify/swagger-ui';
 
 import { Config } from './config';
 import { isOnWater } from './is-on-water';
+
+const { name: packageName, version: packageVersion } = JSON.parse(
+    readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8')
+) as { name: string; version: string };
 
 declare module 'fastify' {
     interface FastifyRequest {
@@ -65,10 +70,10 @@ export const initApp = async (config: Config, logger: pino.Logger) => {
     await app.register(fastifySwagger, {
         openapi: {
             info: {
-                title: 'is-on-water',
+                title: packageName,
                 description:
                     'Check whether a geographic coordinate is on water (seas, lakes, and rivers). Water polygons © OpenStreetMap contributors via geo-maps; shoreline accuracy is approximate.',
-                version: '1.0.0',
+                version: packageVersion,
             },
             servers: [],
         },

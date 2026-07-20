@@ -117,4 +117,24 @@ tap.test('app', async (t) => {
         t.match(body, /OpenStreetMap/);
         t.match(body, /geo-maps/);
     });
+
+    t.test('swagger info version matches package.json', async (t) => {
+        const { readFileSync } = await import('node:fs');
+        const { join } = await import('node:path');
+        const { version } = JSON.parse(
+            readFileSync(join(__dirname, '..', 'package.json'), 'utf8')
+        ) as { version: string };
+
+        const response = await client.request({
+            method: 'GET',
+            path: '/documentation/json',
+        });
+
+        t.equal(response.statusCode, 200);
+        const body = (await response.body.json()) as {
+            info: { title: string; version: string };
+        };
+        t.equal(body.info.title, 'is-on-water');
+        t.equal(body.info.version, version);
+    });
 });
