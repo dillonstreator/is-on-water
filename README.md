@@ -1,6 +1,8 @@
 # `is-on-water`
 
-💧 Check whether a geographic coordinate is on water (seas, lakes, and rivers) with 1m precision. Exposed via an HTTP API allowing for single coordinate (`GET /api/is-on-water?lat=${lat}&lon=${lon}`) and batches (`POST /api/is-on-water` with array of coordinate objects) lookups.
+Check whether a geographic coordinate is on water (seas, lakes, and rivers). Exposed via an HTTP API for single coordinate (`GET /api/is-on-water?lat=${lat}&lon=${lon}`) and batch (`POST /api/is-on-water` with an array of `{ lat, lon }` objects) lookups.
+
+Built on [Fastify](https://fastify.dev/) with optional OpenTelemetry, Swagger at `/documentation`, and rate limiting (in-memory by default; Redis when `REDIS_URL` is set).
 
 [![Deploy on Railway](https://railway.app/button.svg)](https://railway.app/template/MfUYQX?referralCode=ToZEjF)
 
@@ -11,13 +13,79 @@ git clone https://github.com/dillonstreator/is-on-water
 
 cd is-on-water
 
-yarn install
+pnpm install
 
 ## run in development with hot-reload
-yarn dev
+pnpm dev
 
 ## OR build and run
-yarn build && yarn start
+pnpm build && pnpm start
 ```
 
-It is expected that a [Redis](https://redis.io/) instance is running. You can specify the redis connection url with the environment variable `REDIS_URL`. You can also use the [`docker-compose.yaml`](./docker-compose.yaml) to spin up a Redis instance with `docker-compose up`.
+## Configuration
+
+See [`.env-example`](./.env-example) for all environment variables.
+
+### Rate limiting
+
+Rate limiting uses an **in-memory** store by default (no Redis required).
+
+To share limits across multiple instances, set `REDIS_URL` (for example `redis://localhost:6379`). You can start Redis with:
+
+```sh
+docker compose --profile redis up
+```
+
+When `REDIS_URL` is set, `/health` also pings Redis and returns `503` if it is unreachable.
+
+### OpenTelemetry
+
+Disabled by default. Enable with `OTEL_ENABLED=true`.
+
+By default the trace exporter writes to standard output. Set `OTEL_EXPORTER_OTLP_ENDPOINT` (for example `http://localhost:4318/v1/traces`) to export to a collector. `docker compose up` starts Jaeger; UI at http://localhost:16686.
+
+## API
+
+Interactive docs: `/documentation`
+
+### GET `/api/is-on-water`
+
+```sh
+curl "http://localhost:3000/api/is-on-water?lat=20.112682&lon=-37.048647"
+```
+
+```json
+{ "water": true, "lat": 20.112682, "lon": -37.048647 }
+```
+
+Latitude must be between -90 and 90; longitude between -180 and 180.
+
+### POST `/api/is-on-water`
+
+Body: JSON array of `{ "lat", "lon" }` (max `MAX_BATCH_SIZE`, default 500).
+
+```sh
+curl -X POST http://localhost:3000/api/is-on-water \
+  -H 'content-type: application/json' \
+  -d '[{"lat":20.112682,"lon":-37.048647},{"lat":40.292097,"lon":-98.613164}]'
+```
+
+## Data
+
+Water polygons come from [`@geo-maps/earth-waterbodies-1m`](https://www.npmjs.com/package/@geo-maps/earth-waterbodies-1m) (OpenStreetMap-derived GeoJSON, package vintage 2017). The “1m” label is the upstream Douglas–Peucker simplification tolerance, **not** a measured shoreline accuracy SLA. Treat results as approximate.
+
+© [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors. Data licensed under [ODbL](https://opendatacommons.org/licenses/odbl/).
+
+## Releasing
+
+This repo uses [Changesets](https://github.com/changesets/changesets).
+
+1. During development, record user-facing changes: `pnpm changeset`
+2. On push to `main`, GitHub Actions opens (or updates) a **Version Packages** PR
+3. Merging that PR bumps `package.json`, updates `CHANGELOG.md`, tags the release, and creates a GitHub Release
+
+CI (typecheck, test, build) runs on every pull request and push to `main`.
+
+## License
+
+MIT — see [LICENSE](./LICENSE). Map data remains under OSM/ODbL as noted above.

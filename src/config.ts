@@ -6,22 +6,27 @@ export type Config = {
     healthCheckEndpoint: string;
     env: Env;
     logLevel: pino.Level;
-    redisUrl: string;
+    /** When set, rate limiting uses Redis; otherwise an in-memory store. */
+    redisUrl?: string;
     rateLimitWindowMs: number;
     rateLimitMax: number;
+    maxBatchSize: number;
     trustProxy: boolean;
 }
 
 export const initConfig = async (): Promise<Config> => {
+    const redisUrl = process.env.REDIS_URL?.trim();
+
     return {
         shutdownTimeoutMs: parseInt(process.env.SHUTDOWN_TIMEOUT_MS || "30000"),
         port: parseInt(process.env.PORT || "3000"),
         healthCheckEndpoint: process.env.HEALTH_CHECK_ENDPOINT || "/health",
         env: getEnv(),
         logLevel: process.env.LOG_LEVEL?.toLowerCase() as pino.Level|undefined || "info",
-        redisUrl: process.env.REDIS_URL || "redis://localhost:6379",
-        rateLimitWindowMs: parseInt(process.env.RATE_LIMIT_WNIDOW_MS || "60000"),
+        redisUrl: redisUrl || undefined,
+        rateLimitWindowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || "60000"),
         rateLimitMax: parseInt(process.env.RATE_LIMIT_MAX || "100"),
+        maxBatchSize: parseInt(process.env.MAX_BATCH_SIZE || "500"),
         trustProxy: (process.env.TRUST_PROXY?.toLowerCase() || "true") === "true",
     }
 }
