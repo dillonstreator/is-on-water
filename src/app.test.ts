@@ -1,52 +1,120 @@
-
 import pino from 'pino';
-import request from 'supertest';
-import { App, initApp } from './app';
-import { Config, initConfig } from './config';
+import { initApp } from './app';
+import { initConfig } from './config';
 
-const nopLogger = pino({ enabled: false });
+import tap, { Test } from 'tap';
+import { Client } from 'undici';
+import { AddressInfo } from 'node:net';
 
-describe("app", () => {
-    let app: App;
-    let config: Config;
-    beforeAll(async () => {
-        config = {
-            ...(await initConfig()),
-            healthCheckEndpoint: "/some-health-check-endpoint"
-        };
-        app = await initApp(config, nopLogger);
+const initAppTest = async (t: Test) => {
+    const config = {
+        ...(await initConfig()),
+        healthCheckEndpoint: '/some-health-check-endpoint',
+        // Ensure tests never require Redis
+        redisUrl: undefined,
+    };
+    const app = await initApp(config, pino({ enabled: false }));
+    await app.fastify.listen({ host: '127.0.0.1', port: 0 });
+    const baseUrl = `http://127.0.0.1:${
+        (app.fastify.server.address() as AddressInfo).port
+    }`;
+    const client = new Client(baseUrl);
+
+    t.teardown(async () => {
+        await app.shutdown();
+        client.close();
     });
-    afterAll(async () => {
-        await app?.shutdown();
+
+    return {
+        config,
+        app,
+        client,
+    };
+};
+
+tap.test('app', async (t) => {
+    const { config, client } = await initAppTest(t);
+
+    t.test('should return 200 for config health check endpoint', async (t) => {
+        const response = await client.request({
+            method: 'GET',
+            path: config.healthCheckEndpoint,
+        });
+
+        t.equal(response.statusCode, 200);
+        await response.body.dump();
     });
 
-    it("should return 200 for config health check endpoint", async () => {
-        await request(app.requestListener)
-            .get(config.healthCheckEndpoint)
-            .expect(200);
-    });
-
-    it("should indicate water", async () => {
+    t.test('should indicate water for Atlantic point', async (t) => {
         // https://www.latlong.net/c/?lat=20.112682&long=-37.048647
         const lat = 20.112682;
         const lon = -37.048647;
-        await request(app.requestListener)
-            .get(`/?lat=${lat}&lon=${lon}`)
-            .expect(200)
-            .then(res => {
-                expect(res.body).toEqual({ lat, lon, water: true });
-            });
+        const response = await client.request({
+            method: 'GET',
+            path: `/api/is-on-water?lat=${lat}&lon=${lon}`,
+        });
+
+        t.equal(response.statusCode, 200);
+        const body = await response.body.json();
+        t.same(body, { lat, lon, water: true });
     });
 
-    it("should indicate no water", async () => {
+    t.test('should indicate no water for Nebraska point', async (t) => {
         // https://www.latlong.net/c/?lat=40.292097&long=-98.613164
         const lat = 40.292097;
         const lon = -98.613164;
-        await request(app.requestListener)
-            .get(`/?lat=${lat}&lon=${lon}`)
-            .expect(200)
-            .then(res => {
-                expect(res.body).toEqual({ lat, lon, water: false });
-            });
+        const response = await client.request({
+            method: 'GET',
+            path: `/api/is-on-water?lat=${lat}&lon=${lon}`,
+        });
+
+        t.equal(response.statusCode, 200);
+        const body = await response.body.json();
+        t.same(body, { lat, lon, water: false });
+    });
+
+    t.test('should accept numeric zero coordinates on POST', async (t) => {
+        const response = await client.request({
+            method: 'POST',
+            path: '/api/is-on-water',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify([{ lat: 0, lon: 0 }]),
+        });
+
+        t.equal(response.statusCode, 200);
+        const body = (await response.body.json()) as Array<{
+            water: boolean;
+            lat: number;
+            lon: number;
+        }>;
+        t.equal(body.length, 1);
+        t.equal(body[0].lat, 0);
+        t.equal(body[0].lon, 0);
+        t.type(body[0].water, 'boolean');
+    });
+
+    t.test('should reject invalid latitude', async (t) => {
+        const response = await client.request({
+            method: 'GET',
+            path: '/api/is-on-water?lat=91&lon=0',
+        });
+
+        t.equal(response.statusCode, 400);
+        await response.body.dump();
+    });
+
+    t.test('should serve the demo map', async (t) => {
+        const response = await client.request({
+            method: 'GET',
+            path: '/',
+        });
+
+        t.equal(response.statusCode, 200);
+        const body = await response.body.text();
+        t.match(body, /Is On Water/);
+        t.match(body, /leaflet/i);
+        t.match(body, /coord-form/);
+        t.match(body, /OpenStreetMap/);
+        t.match(body, /geo-maps/);
     });
 });

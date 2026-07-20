@@ -1,167 +1,219 @@
 import { randomUUID } from 'node:crypto';
-import { AsyncLocalStorage } from 'node:async_hooks';
-import { RequestListener } from 'node:http';
 import path from 'node:path';
-import express, { NextFunction, Request, Response, json, urlencoded } from 'express';
+import Fastify, { FastifyError } from 'fastify';
 import pino from 'pino';
-import helmet from 'helmet';
-import compression from 'compression';
-import { getClientIp } from 'request-ip';
-import { createClient } from 'redis';
-import { rateLimit } from 'express-rate-limit'
-import { RedisStore } from 'rate-limit-redis'
+import helmet from '@fastify/helmet';
+import compression from '@fastify/compress';
+import rateLimit from '@fastify/rate-limit';
+import fastifyStatic from '@fastify/static';
+import Redis from 'ioredis';
+import {
+    serializerCompiler,
+    validatorCompiler,
+    ZodTypeProvider,
+    jsonSchemaTransform,
+} from 'fastify-type-provider-zod';
+import z from 'zod';
+import fastifySwagger from '@fastify/swagger';
+import fastifySwaggerUI from '@fastify/swagger-ui';
+
 import { Config } from './config';
-import { Coordinate, isOnWater, isCoordinate } from './is-on-water';
-import { tracer } from './telemetry';
+import { isOnWater } from './is-on-water';
 
-const indexHTMLPath = path.join(__dirname, "public", "index.html");
-
-export type App = {
-    requestListener: RequestListener,
-    shutdown: () => Promise<void>,
+declare module 'fastify' {
+    interface FastifyRequest {
+        abortSignal: AbortSignal;
+    }
 }
 
-export const initApp = async (config: Config, logger: pino.Logger): Promise<App> => {
-    const redisClient = await createClient({
-        url: config.redisUrl,
-    }).connect();
+const coordinateSchema = z.object({
+    lat: z.coerce.number().min(-90).max(90),
+    lon: z.coerce.number().min(-180).max(180),
+});
 
-    const limiter = rateLimit({
-        windowMs: config.rateLimitWindowMs,
-        max: config.rateLimitMax,
-        store: new RedisStore({
-            sendCommand: (...args: string[]) => redisClient.sendCommand(args),
-        })
-    });
+const isOnWaterResultSchema = z.object({
+    water: z.boolean(),
+    lat: z.number(),
+    lon: z.number(),
+});
 
-    const app = express();
-    if (config.trustProxy) {
-        app.set("trust proxy", true);
+export const initApp = async (config: Config, logger: pino.Logger) => {
+    const redis = config.redisUrl
+        ? new Redis(config.redisUrl, {
+              connectTimeout: 500,
+              maxRetriesPerRequest: 1,
+              lazyConnect: true,
+          })
+        : undefined;
+
+    if (redis) {
+        await redis.connect();
+        logger.info('Rate limiting store: Redis');
+    } else {
+        logger.info('Rate limiting store: in-memory');
     }
 
-    app.use((req, res, next) => {
-        const start = new Date().getTime();
-
-        const requestId = req.headers['x-request-id']?.[0] || randomUUID();
-
-        const l = logger.child({ requestId });
-
-        let bytesRead = 0;
-        req.on('data', (chunk: Buffer) => {
-            bytesRead += chunk.length;
-        });
-
-        let bytesWritten = 0;
-        const oldWrite = res.write;
-        const oldEnd = res.end;
-        res.write = function (chunk: Buffer | string, ...rest) {
-            if (chunk) bytesWritten += chunk.length;
-
-            // @ts-ignore
-            return oldWrite.apply(res, [chunk, ...rest]);
-        };
-        // @ts-ignore
-        res.end = function (chunk?: Buffer | string, ...rest) {
-            if (chunk) bytesWritten += chunk.length;
-
-            // @ts-ignore
-            return oldEnd.apply(res, [chunk, ...rest]);
-        };
-
-        res.on("finish", () => {
-            l.info({
-                duration: new Date().getTime() - start,
-                method: req.method,
-                path: req.path,
-                status: res.statusCode,
-                ua: req.headers['user-agent'],
-                ip: getClientIp(req),
-                br: bytesRead,
-                bw: bytesWritten,
-            }, "Request handled");
-        });
-
-        asl.run({ logger: l, requestId }, () => next());
+    const app = Fastify({
+        loggerInstance: logger,
+        trustProxy: config.trustProxy,
+        bodyLimit: 1024,
+        genReqId: () => randomUUID(),
     });
-    app.use(helmet({
+    app.setValidatorCompiler(validatorCompiler);
+    app.setSerializerCompiler(serializerCompiler);
+
+    await app.register(fastifySwagger, {
+        openapi: {
+            info: {
+                title: 'is-on-water',
+                description:
+                    'Check whether a geographic coordinate is on water (seas, lakes, and rivers). Water polygons © OpenStreetMap contributors via geo-maps; shoreline accuracy is approximate.',
+                version: '1.0.0',
+            },
+            servers: [],
+        },
+        transform: jsonSchemaTransform,
+    });
+
+    await app.register(helmet, {
         contentSecurityPolicy: {
             directives: {
-                "script-src": "'self' 'unsafe-inline' https://unpkg.com",
-                "img-src": "'self' data: https://tile.openstreetmap.org https://railway.app"
+                'script-src': ["'self'", "'unsafe-inline'", 'https://unpkg.com'],
+                'style-src': ["'self'", "'unsafe-inline'", 'https://unpkg.com'],
+                'img-src': [
+                    "'self'",
+                    'data:',
+                    'https://tile.openstreetmap.org',
+                    'https://railway.app',
+                ],
+                'connect-src': ["'self'"],
+            },
+        },
+    });
+    await app.register(compression);
+    await app.register(fastifySwaggerUI, {
+        routePrefix: '/documentation',
+    });
+
+    await app.register(rateLimit, {
+        global: true,
+        max: config.rateLimitMax,
+        timeWindow: config.rateLimitWindowMs,
+        redis,
+        nameSpace: 'is-on-water-rl:',
+        allowList: (req) => {
+            const pathOnly = req.url.split('?')[0];
+            return (
+                pathOnly === config.healthCheckEndpoint ||
+                pathOnly === '/documentation' ||
+                pathOnly.startsWith('/documentation/')
+            );
+        },
+    });
+
+    await app.register(fastifyStatic, {
+        root: path.join(__dirname, 'public'),
+        wildcard: false,
+        index: false,
+    });
+
+    await app.after();
+
+    app.addHook('onRequest', async (req) => {
+        const ac = new AbortController();
+        req.abortSignal = ac.signal;
+
+        req.raw.on('close', () => {
+            if (req.raw.destroyed) {
+                ac.abort();
+            }
+        });
+    });
+
+    app.get(config.healthCheckEndpoint, async (_req, res) => {
+        if (redis) {
+            try {
+                const pong = await redis.ping();
+                if (pong !== 'PONG') {
+                    return res.status(503).send({ msg: 'Redis unavailable' });
+                }
+            } catch {
+                return res.status(503).send({ msg: 'Redis unavailable' });
             }
         }
-    }));
-    app.use(compression());
-    app.use(urlencoded());
-    app.use(json());
-
-    app.get(config.healthCheckEndpoint, (req, res) => {
-        res.sendStatus(200);
+        res.status(200).send();
     });
 
-    app.use(limiter);
-
-    app.get("/", (req, res) => {
-        res.sendFile(indexHTMLPath);
+    app.get('/', (_req, res) => {
+        return res.sendFile('index.html');
     });
 
-    app.get("/api/is-on-water", async (req, res) => {
-        if (!isCoordinate(req.query))
-            return res
-                .status(400)
-                .send(
-                    "'lat' and 'lon' query parameters required representing a valid lat/lon (-180 < lat/lon < 180)"
-                );
-        const { lat, lon } = req.query as Coordinate;
-
-        const span = tracer.startSpan("isOnWater");
-        span.setAttribute("count", 1);
-        const result = isOnWater({ lat, lon });
-        span.end();
-
-        res.json(result);
+    app.withTypeProvider<ZodTypeProvider>().route({
+        method: 'GET',
+        url: '/api/is-on-water',
+        schema: {
+            querystring: coordinateSchema,
+            response: {
+                200: isOnWaterResultSchema,
+            },
+        },
+        handler(req, res) {
+            res.send(isOnWater(req.query));
+        },
     });
 
-    app.post("/api/is-on-water", (req, res) => {
-        const coordinates = req.body;
-        if (!Array.isArray(coordinates))
-            return res.status(400).send("body must be an array of coordinates");
-
-        if (!coordinates.every(isCoordinate))
-            return res
-                .status(400)
-                .send(
-                    "body must be an array of objects containing keys 'lat' and 'lon' representing a valid lat/lon (-180 < lat/lon < 180)"
-                );
-
-        const span = tracer.startSpan("isOnWater");
-        span.setAttribute("count", coordinates.length);
-        const result = coordinates.map(isOnWater);
-        span.end();
-
-        res.json(result);
+    app.withTypeProvider<ZodTypeProvider>().route({
+        method: 'POST',
+        url: '/api/is-on-water',
+        config: {
+            // Allow larger batches than the default 1kb body limit
+            bodyLimit: 1024 * 100,
+        },
+        schema: {
+            body: z
+                .array(coordinateSchema)
+                .min(1)
+                .max(config.maxBatchSize),
+            response: {
+                200: z.array(isOnWaterResultSchema),
+            },
+        },
+        handler(req, res) {
+            res.send(req.body.map(isOnWater));
+        },
     });
 
-    app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
-        asl.getStore()?.logger.error(err);
+    app.setErrorHandler(function (error: FastifyError, req, res) {
+        req.log.error(error);
 
-        if (res.headersSent) return next(err);
+        if (res.sent) return;
 
-        res.status(500);
-        res.json({ msg: "Something went wrong" });
+        const statusCode = error.statusCode ?? 500;
+
+        if (statusCode === 429) {
+            res.status(429).send({ msg: 'Rate limit exceeded' });
+            return;
+        }
+
+        if (statusCode >= 400 && statusCode < 500) {
+            res.status(statusCode).send({
+                msg: error.message || 'Bad request',
+            });
+            return;
+        }
+
+        res.status(500).send({ msg: 'Something went wrong' });
     });
+
+    await app.ready();
 
     return {
-        requestListener: app,
+        fastify: app,
         shutdown: async () => {
-            await redisClient.disconnect();
+            await app.close();
+            if (redis) {
+                await redis.quit();
+            }
         },
-    }
-}
-
-type Store = {
-    logger: pino.Logger;
-    requestId: string;
-}
-
-const asl = new AsyncLocalStorage<Store>();
+    };
+};
